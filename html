@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Absensi Digital - QR (HTML)</title>
+  <style>
+    :root{--accent:#0b73ff;--card:#fff;--bg:#f4f6fb}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; margin:16px; background:var(--bg); color:#111}
+    h1{margin:0 0 12px}
+    .grid{display:grid;gap:12px}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .card{background:var(--card);padding:12px;border-radius:10px;box-shadow:0 6px 18px rgba(6,15,30,0.06)}
+    input, button, textarea, select{font:inherit;padding:8px;border-radius:8px;border:1px solid #e6e9ef}
+    button{background:var(--accent);color:white;border:none;cursor:pointer}
+    button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+    .small{font-size:13px;padding:6px 8px}
+    .students-list{max-height:260px;overflow:auto;border:1px dashed #eef2fb;padding:8px;border-radius:8px}
+    .student{display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid #f1f3f7}
+    .qrcell{width:80px;height:80px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:#fafcff}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #f1f3f7;text-align:left}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .status-present{color:green;font-weight:600}
+    @media(min-width:900px){ .main-grid{grid-template-columns:1fr 460px} }
+  </style>
+  <!-- QRCode library -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <!-- html5-qrcode scanner -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.7/minified/html5-qrcode.min.js"></script>
+</head>
+<body>
+  <h1>Absensi Digital — QR (HTML)</h1>
+
+  <div class="grid main-grid">
+    <!-- LEFT: Manage students & generator -->
+    <div class="card">
+      <h3>1. Import / Tambah Siswa</h3>
+      <p class="small">CSV: <code>NIS,Name,Class</code> — contoh: <code>12345,Fany Maulidia,X5</code></p>
+
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input id="csvInput" type="file" accept=".csv" />
+        <button id="importCsv" class="small">Import CSV</button>
+        <button id="clearStudents" class="small ghost">Hapus daftar</button>
+      </div>
+
+      <div style="margin-bottom:8px">
+        <input id="nisInput" placeholder="NIS" />
+        <input id="nameInput" placeholder="Nama lengkap" />
+        <input id="classInput" placeholder="Kelas (opsional)" />
+        <button id="addStudent" class="small">Tambah</button>
+      </div>
+
+      <div class="students-list" id="studentsList" aria-live="polite"></div>
+
+      <div style="margin-top:12px">
+        <button id="generateAll" class="small">Generate & Tampilkan QR Semua</button>
+        <button id="downloadQRCsv" class="small ghost">Download Daftar (CSV)</button>
+      </div>
+    </div>
+
+    <!-- RIGHT: Scanner & Rekap -->
+    <div class="card">
+      <h3>2. Scanner & Rekap</h3>
+
+      <div class="controls" style="margin-bottom:8px">
+        <button id="startScan" class="small">Mulai Scan</button>
+        <button id="stopScan" class="small ghost">Stop Scan</button>
+        <button id="exportAttendance" class="small">Export Rekap (CSV)</button>
+        <button id="resetAttendance" class="small ghost">Reset Rekap</button>
+      </div>
+
+      <div id="qr-reader" style="width:100%;min-height:260px;background:#fff;border-radius:8px;display:flex;align-items:center;justify-content:center">
+        <div style="text-align:center;color:#8893a7">Scanner belum aktif. Tekan "Mulai Scan".</div>
+      </div>
+
+      <h4 style="margin-top:12px;margin-bottom:6px">Rekap Hadir</h4>
+      <table id="attendanceTable" class="small">
+        <thead>
+          <tr><th>Tanggal/Waktu</th><th>NIS</th><th>Nama</th><th>Kelas</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal area for QR display/printing -->
+  <div id="qrModal" style="display:none;position:fixed;inset:0;background:rgba(10,12,20,0.45);align-items:center;justify-content:center">
+    <div style="background:white;padding:16px;border-radius:12px;max-width:860px;width:94%;max-height:90%;overflow:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0">QR Codes</h3>
+        <div>
+          <button id="printQrs" class="small">Print</button>
+          <button id="closeModal" class="small ghost">Tutup</button>
+        </div>
+      </div>
+      <div id="qrGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:12px"></div>
+    </div>
+  </div>
+
+<script>
+/* Simple client-only absensi app */
+(() => {
+  const studentsKey = 'absensi_students_v1';
+  const attendKey = 'absensi_records_v1';
+
+  // DOM refs
+  const csvInput = document.getElementById('csvInput');
+  const importCsv = document.getElementById('importCsv');
+  const studentsList = document.getElementById('studentsList');
+  const addStudent = document.getElementById('addStudent');
+  const nisInput = document.getElementById('nisInput');
+  const nameInput = document.getElementById('nameInput');
+  const classInput = document.getElementById('classInput');
+  const clearStudents = document.getElementById('clearStudents');
+  const generateAll = document.getElementById('generateAll');
+  const qrModal = document.getElementById('qrModal');
+  const qrGrid = document.getElementById('qrGrid');
+  const closeModal = document.getElementById('closeModal');
+  const printQrs = document.getElementById('printQrs');
+  const downloadQRCsv = document.getElementById('downloadQRCsv');
+
+  const startScan = document.getElementById('startScan');
+  const stopScan = document.getElementById('stopScan');
+  const qrReader = document.getElementById('qr-reader');
+  const attendanceTableBody = document.querySelector('#attendanceTable tbody');
+  const exportAttendance = document.getElementById('exportAttendance');
+  const resetAttendance = document.getElementById('resetAttendance');
+
+  let students = load(studentsKey, []);
+  let records = load(attendKey, []);
+  let html5QrScanner = null;
+
+  function save(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
+  function load(key, fallback) {
+    try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; }
+    catch(e){ return fallback; }
+  }
+
+  function renderStudents(){
+    studentsList.innerHTML = '';
+    if(students.length === 0){ studentsList.innerHTML = '<div style="color:#8792a6;padding:8px">Belum ada siswa</div>'; return; }
+    students.forEach(s => {
+      const div = document.createElement('div');
+      div.className = 'student';
+      div.innerHTML = `
+        <div class="qrcell" id="q-${escapeId(s.nis)}">QR</div>
+        <div style="flex:1">
+          <div style="font-weight:600">${s.name}</div>
+          <div class="small" style="color:#667085">${s.nis} · ${s.class || '-'}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button class="small" data-nis="${s.nis}" onclick="showSingleQR('${s.nis}')">Tampilkan</button>
+          <button class="small ghost" data-nis="${s.nis}" onclick="removeStudent('${s.nis}')">Hapus</button>
+        </div>
+      `;
+      studentsList.appendChild(div);
+      // generate inline QR small
+      QRCode.toCanvas(document.querySelector(`#q-${escapeId(s.nis)}`), s.nis, { width:72, margin:0 }).catch(()=>{/*ignore*/});
+    });
+  }
+
+  // helpers for escaping id
+  function escapeId(id){ return id.replace(/[^a-z0-9_\-]/gi,'_'); }
+
+  // Add / remove students
+  addStudent.addEventListener('click', () => {
+    const nis = nisInput.value.trim();
+    const name = nameInput.value.trim();
+    const cls = classInput.value.trim();
+    if(!nis || !name){ alert('Isi NIS dan Nama'); return; }
+    if(students.some(s=>s.nis===nis)){ alert('NIS sudah ada'); return; }
+    students.push({ nis, name, class: cls });
+    save(studentsKey, students);
+    nisInput.value=''; nameInput.value=''; classInput.value='';
+    renderStudents();
+  });
+
+  window.removeStudent = function(nis){
+    if(!confirm('Hapus siswa NIS ' + nis + '?')) return;
+    students = students.filter(s=>s.nis !== nis);
+    save(studentsKey, students);
+    renderStudents();
+  };
+
+  // Import CSV
+  importCsv.addEventListener('click', () => {
+    const f = csvInput.files[0];
+    if(!f){ alert('Pilih file CSV terlebih dahulu'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const txt = e.target.result;
+      const lines = txt.split(/\r?\n/).map(l=>l.trim()).filter(l=>l);
+      for(const ln of lines){
+        const cols = ln.split(',');
+        if(cols.length < 2) continue;
+        const nis = cols[0].trim();
+        const name = cols[1].trim();
+        const cls = (cols[2]||'').trim();
+        if(!nis || !name) continue;
+        if(!students.some(s=>s.nis===nis)) students.push({ nis,name, class: cls });
+      }
+      save(studentsKey, students);
+      renderStudents();
+      alert('Import selesai. ' + students.length + ' siswa terdaftar.');
+    };
+    reader.readAsText(f,'utf-8');
+  });
+
+  clearStudents.addEventListener('click', () => {
+    if(!confirm('Hapus seluruh daftar siswa?')) return;
+    students = [];
+    save(studentsKey, students);
+    renderStudents();
+  });
+
+  // Generate all QR modal
+  generateAll.addEventListener('click', async () => {
+    if(students.length===0){ alert('Belum ada siswa untuk digenerate'); return; }
+    qrGrid.innerHTML = '';
+    for(const s of students){
+      const card = document.createElement('div');
+      card.style.padding='8px';
+      card.style.borderRadius='8px';
+      card.style.background='#fbfdff';
+      card.style.textAlign='center';
+      card.innerHTML = `<div style="font-weight:600;margin-bottom:6px">${s.name}</div><canvas id="c-${escapeId(s.nis)}"></canvas><div class="small" style="margin-top:6px">${s.nis}<br>${s.class||''}</div>`;
+      qrGrid.appendChild(card);
+      await QRCode.toCanvas(document.getElementById(`c-${escapeId(s.nis)}`), s.nis, { width:140 });
+    }
+    qrModal.style.display='flex';
+  });
+
+  downloadQRCsv.addEventListener('click', () => {
+    if(students.length===0){ alert('Belum ada siswa'); return; }
+    const csv = students.map(s => `${s.nis},${s.name},${s.class||''}`).join('\n');
+    downloadFile(csv, 'students.csv', 'text/csv');
+  });
+
+  closeModal.addEventListener('click', ()=> qrModal.style.display='none');
+  printQrs.addEventListener('click', ()=> { window.print(); });
+
+  // Scanner logic
+  startScan.addEventListener('click', async () => {
+    if(html5QrScanner){ alert('Scanner sudah berjalan'); return; }
+    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+    qrReader.innerHTML = '';
+    try {
+      html5QrScanner = new Html5Qrcode(/* element id */ "qr-reader");
+      await html5QrScanner.start(
+        { facingMode: "environment" },
+        config,
+        qrCodeSuccessCallback,
+        qrCodeErrorCallback
+      );
+    } catch(err){
+      qrReader.innerHTML = '<div style="padding:16px;color:#a33">Gagal mengakses kamera. Pastikan izin kamera diberikan dan buka lewat HTTPS atau file lokal diperbolehkan.</div>';
+      html5QrScanner = null;
+      console.error(err);
+    }
+  });
+
+  stopScan.addEventListener('click', async () => {
+    if(!html5QrScanner) return alert('Scanner belum berjalan');
+    await html5QrScanner.stop();
+    html5QrScanner.clear();
+    html5QrScanner = null;
+    qrReader.innerHTML = '<div style="text-align:center;color:#8893a7">Scanner dihentikan.</div>';
+  });
+
+  function qrCodeErrorCallback(err){ /* ignore small errors */ }
+  function qrCodeSuccessCallback(decodedText, decodedResult){
+    // decodedText = NIS as we encoded
+    const now = new Date().toISOString();
+    const nis = decodedText;
+    const student = students.find(s=>s.nis === nis);
+    const name = student ? student.name : '(tidak terdaftar)';
+    const cls = student ? student.class : '';
+    // prevent duplicate same NIS within short time (2 sec)
+    const last = records.length ? records[records.length-1] : null;
+    if(last && last.nis === nis && (new Date(now) - new Date(last.time)) < 2000) return;
+    records.push({ time: now, nis, name, class: cls });
+    save(attendKey, records);
+    renderAttendance();
+    // flash confirmation
+    flashTempMessage(`${name} (${nis}) tercatat.`, 2000);
+  }
+
+  function renderAttendance(){
+    attendanceTableBody.innerHTML = '';
+    for(const r of records.slice().reverse()){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="small">${new Date(r.time).toLocaleString()}</td><td>${r.nis}</td><td>${r.name}</td><td>${r.class || '-'}</td>`;
+      attendanceTableBody.appendChild(tr);
+    }
+  }
+
+  exportAttendance.addEventListener('click', () => {
+    if(records.length===0){ alert('Belum ada rekap'); return; }
+    const csv = ['time,nis,name,class', ...records.map(r => `${r.time},${escapeCsv(r.nis)},${escapeCsv(r.name)},${escapeCsv(r.class||'')}`)].join('\n');
+    downloadFile(csv, 'attendance.csv', 'text/csv');
+  });
+
+  resetAttendance.addEventListener('click', () => {
+    if(!confirm('Reset semua rekap hadir?')) return;
+    records = [];
+    save(attendKey, records);
+    renderAttendance();
+  });
+
+  function downloadFile(content, filename, type){
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function escapeCsv(s){ if(s == null) return ''; return `"${(''+s).replace(/"/g,'""')}"`; }
+
+  function flashTempMessage(text, ms=1800){
+    const el = document.createElement('div');
+    el.style.position='fixed'; el.style.left='50%'; el.style.transform='translateX(-50%)'; el.style.bottom='22px';
+    el.style.padding='10px 14px'; el.style.background='rgba(6,15,30,0.9)'; el.style.color='white'; el.style.borderRadius='10px';
+    el.style.zIndex=9999; el.innerText=text;
+    document.body.appendChild(el);
+    setTimeout(()=> el.remove(), ms);
+  }
+
+  // small utility to show single QR outside modal
+  window.showSingleQR = async function(nis){
+    const s = students.find(x=>x.nis===nis);
+    if(!s){ alert('Tidak ketemu'); return; }
+    qrGrid.innerHTML = '';
+    const card = document.createElement('div');
+    card.style.padding='8px';
+    card.style.borderRadius='8px';
+    card.style.background='#fbfdff';
+    card.style.textAlign='center';
+    card.innerHTML = `<div style="font-weight:600;margin-bottom:6px">${s.name}</div><canvas id="c-${escapeId(s.nis)}"></canvas><div class="small" style="margin-top:6px">${s.nis}<br>${s.class||''}</div>`;
+    qrGrid.appendChild(card);
+    await QRCode.toCanvas(document.getElementById(`c-${escapeId(s.nis)}`), s.nis, { width:220 });
+    qrModal.style.display='flex';
+  };
+
+  // init
+  renderStudents();
+  renderAttendance();
+
+  // expose for debugging (optional)
+  window._absensi = { students, records };
+})();
+</script>
+</body>
+</html>
