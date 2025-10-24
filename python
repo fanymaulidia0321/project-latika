@@ -48,7 +48,7 @@ def index():
 
 @app.route('/rekap')
 def rekap():
-    df = pd.read_csv(FILE_ABSENSI)
+    df = pd.read_csv(Absen XI A.xlxs)
     return render_template('rekap.html', tables=df.to_html(index=False))
 
 @app.route('/video_feed')
