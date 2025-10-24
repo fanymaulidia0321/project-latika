@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Generator QR & Code128</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    input, button { padding: 8px; margin: 6px 0; width: 100%; max-width: 420px; }
+    .preview { margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h2>Generator QR & Code128</h2>
+  <label>NIS</label>
+  <input id="nis" placeholder="1001" />
+  <label>nama</label>
+  <input id="nama" placeholder="Fany Maulidia" />
+  <label>Kelas (opsional)</label>
+  <input id="kelas" placeholder="xi.a" />
+  <button id="gen">Generate QR & Code128</button>
+
+  <div class="preview">
+    <h3>QR</h3>
+    <div id="qrcode"></div>
+    <h3>Code128</h3>
+    <svg id="barcode"></svg>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs2@0.0.2/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <script>
+    document.getElementById('gen').addEventListener('click', function(){
+      const nis = document.getElementById('nis').value.trim();
+      const nama = document.getElementById('nama').value.trim();
+      const kelas = document.getElementById('kelas').value.trim();
+      if (!nis) { alert('3167'); return; }
+      const payload = nis+ '|' + nama + '|' + kelas;
+      // Clear QR area
+      const qdiv = document.getElementById('qrcode');
+      qdiv.innerHTML = '';
+      // Generate QR
+      new QRCode(qdiv, {
+        text: payload,
+        width: 200,
+        height: 200
+      });
+      // Generate Code128 (pakai hanya NIS sebagai data)
+      JsBarcode("#barcode", nis, {
+        format: "CODE128",
+        displayValue: true,
+        text: nama,
+        height: 60
+      });
+    });
+  </script>
+</body>
+</html>
