@@ -1,0 +1,59 @@
+from flask import Flask, render_template, Response, redirect, url_for
+import cv2
+from pyzbar.pyzbar import decode
+import pandas as pd
+from datetime import datetime
+import os
+
+app = Flask(__name__)
+camera = cv2.VideoCapture(0)
+
+# File absensi
+FILE_ABSENSI = "absensi.csv"
+if not os.path.exists(FILE_ABSENSI):
+    pd.DataFrame(columns=["NIS", "Nama", "Kelas", "Tanggal", "Jam"]).to_csv(FILE_ABSENSI, index=False)
+
+def gen_frames():
+    df = pd.read_csv(FILE_ABSENSI)
+    while True:
+        success, frame = camera.read()
+        if not success:
+            break
+        else:
+            for barcode in decode(frame):
+                data = barcode.data.decode('utf-8')
+                try:
+                    nis, nama, kelas = data.split("|")
+                except:
+                    continue
+
+                now = datetime.now()
+                tanggal = now.strftime("%Y-%m-%d")
+                jam = now.strftime("%H:%M:%S")
+
+                # Cek apakah sudah absen
+                if not ((df["NIS"] == nis) & (df["Tanggal"] == tanggal)).any():
+                    df.loc[len(df)] = [nis, nama, kelas, tanggal, jam]
+                    df.to_csv(FILE_ABSENSI, index=False)
+                    print(f"✅ {nama} berhasil absen pada {tanggal} {jam}")
+
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/rekap')
+def rekap():
+    df = pd.read_csv(FILE_ABSENSI)
+    return render_template('rekap.html', tables=df.to_html(index=False))
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+if __name__ == "__main__":
+    app.run(debug=True)
