@@ -1,57 +1,30 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>SCAN QR ABSENSI KELAS </title>
-  <style>
-    body { font-family: sans-serif; padding: 20px; }
-    input, button { padding: 8px; margin: 6px 0; width: 100%; max-width: 420px; }
-    .preview { margin-top: 12px; }
-  </style>
-</head>
-<body>
-  <h2>">SCAN QR ABSENSI KELAS </h2>
-  <label>NIS</label>
-  <input id="NIS" placeholder="masukkan NIS " />
-  <label>nama</label>
-  <input id="nama" placeholder="masukkan nama" />
-  <label>Kelas</label>
-  <input id="kelas" placeholder="masukkan kelas anda" />
-  <button id="gen">SCAN QR ABSENSI KELAS </button>
+import qrcode
+from PIL import Image, ImageDraw, ImageFont
 
-  <div class="preview">
-    <h3>QR</h3>
-    <div id="qrcode"></div>
-    <h3>Code128</h3>
-    <svg id="barcode"></svg>
-  </div>
+nis = "masukkan nis"
+nama = "masukkan nama"
+kelas = "masukkan kelas"
+data_qr = f"{nis}|{nama}|{kelas}
 
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs2@0.0.2/qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
-  <script>
-    document.getElementById('gen').addEventListener('click', function(){
-      const nis = document.getElementById('nis').value.trim();
-      const nama = document.getElementById('nama').value.trim();
-      const kelas = document.getElementById('kelas').value.trim();
-      if (!nis) { alert('3167'); return; }
-      const payload = nis+ '|' + nama + '|' + kelas;
-      // Clear QR area
-      const qdiv = document.getElementById('qrcode');
-      qdiv.innerHTML = '';
-      // Generate QR
-      new QRCode(qdiv, {
-        text: payload,
-        width: 200,
-        height: 200
-      });
-      //SCAN QR ABSENSI KELAS(pakai hanya NIS sebagai data)
-      JsBarcode("#barcode", nis, {
-        format: "CODE128",
-        displayValue: true,
-        text: nama,
-        height: 60
-      });
-    });
-  </script>
-</body>
-</html>
+qr_img = qrcode.make(data_qr)
+qr_img = qr_img.convert("RGB")
+
+font_size = 20
+try:
+    font = ImageFont.truetype("DejaVuSans.ttf", font_size)
+except:
+    font = ImageFont.load_default()
+
+w_img, h_img = qr_img.size
+padding = 10
+label_h = font_size + padding
+
+# Buat kanvas baru (QR + teks)
+new_img = Image.new("RGB", (w_img, h_img + label_h), "white")
+new_img.paste(qr_img, (0, 0))
+draw = ImageDraw.Draw(new_img)
+text_w, text_h = draw.textsize(nama, font=font)
+draw.text(((w_img - text_w) // 2, h_img + padding // 2), nama, fill="black", font=font)
+new_img.save("QR_Fany_Maulidia.png")
+
+print("✅ QR Code berhasil dibuat: QR_Fany_Maulidia.png")
